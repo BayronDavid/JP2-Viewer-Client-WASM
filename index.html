@@ -1,66 +1,61 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
-      crossorigin="anonymous"
-    />
-    <script type="text/javascript" src="js/openjpegjs.js"></script>
-  </head>
-  <body>
-    <div class="container">
-      <div class="page-header">
-        <h1>Visualizador de Imágenes JP2 desde FastAPI</h1>
-        <p class="lead">Decodificación de JPEG2000 con WebAssembly.</p>
-        <span id="version"></span>
-        <div class="row">
-          <canvas id="myCanvas" width="512" height="512"></canvas>
-        </div>
-      </div>
-      <div class="row">
-        <button id="load">Cargar Imagen</button>
-      </div>
-    </div>
-  </body>
-  <script>
-    var decoder = undefined;
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Decodificación de Imágenes JPEG 2000 con WebAssembly</title>
+    <script src="js/openjpegjs.js"></script>
+</head>
+<body>
+    <h1>Visualizador de Imágenes JPEG 2000</h1>
+    <button onclick="loadImageData()">Cargar Imagen</button>
+    <canvas id="canvas"></canvas>
+    <script>
+        let decoder;
 
-    function main() {
-      OpenJPEGWASM().then(function (openjpegjs) {
-        document.getElementById("version").innerText = openjpegjs.getVersion();
-        decoder = new openjpegjs.J2KDecoder();
-      });
-    }
+        // Esta función se llama cuando la página se carga
+        function init() {
+            OpenJPEGWASM().then(function (openjpegjs) {
+                // Asumimos que openjpegjs proporciona un decodificador JPEG 2000
+                decoder = new openjpegjs.J2KDecoder();
+            }).catch(error => {
+                console.error("Error initializing the decoder:", error);
+            });
+        }
 
-    function loadArrayBuffer(arrayBuffer) {
-      // Decodificar el buffer recibido usando el decodificador OpenJPEGJS
-      const frameInfo = decoder.decode(arrayBuffer);
-      const canvas = document.getElementById('myCanvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = frameInfo.width;
-      canvas.height = frameInfo.height;
-      const imageData = ctx.createImageData(frameInfo.width, frameInfo.height);
-      imageData.data.set(new Uint8ClampedArray(frameInfo.pixelData));
-      ctx.putImageData(imageData, 0, 0);
-    }
+        // Esta función carga los datos de imagen desde el servidor y los decodifica
+        function loadImageData() {
+            const url = "http://localhost:8000/get-image-raw/?x=100&y=100&width=300&height=300";
+            fetch(url)
+                .then(response => response.arrayBuffer())
+                .then(buffer => {
+                    // Preparar el buffer para el decodificador
+                    const encodedBuffer = decoder.getEncodedBuffer(buffer.byteLength);
+                    encodedBuffer.set(new Uint8Array(buffer));
 
-    document.getElementById("load").addEventListener("click", function () {
-      fetch(
-        "http://localhost:8000/get-image-raw/?x=100&y=100&width=300&height=300"
-      )
-        .then(function (response) {
-          return response.arrayBuffer();
-        })
-        .then(function (arrayBuffer) {
-          loadArrayBuffer(arrayBuffer);
-        })
-        .catch(function (err) {
-          console.error("Error fetching image:", err);
-        });
-    });
+                    // Ahora decodificar
+                    decoder.decode();  // Asumiendo que decode() ahora no toma argumentos
 
-    main();
-  </script>
+                    // Recuperar la información de la imagen decodificada
+                    const frameInfo = decoder.getFrameInfo();
+                    const decodedBuffer = decoder.getDecodedBuffer();
+                    
+                    if (frameInfo && decodedBuffer) {
+                        const canvas = document.getElementById('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = frameInfo.width;
+                        canvas.height = frameInfo.height;
+                        const imgData = new ImageData(new Uint8ClampedArray(decodedBuffer), frameInfo.width, frameInfo.height);
+                        ctx.putImageData(imgData, 0, 0);
+                    } else {
+                        console.error("No image data returned after decoding.");
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching the image data:", error);
+                });
+        }
+
+        window.onload = init;
+    </script>
+</body>
 </html>
